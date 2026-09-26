@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Player UI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: radial-gradient(circle at center, #0e162e, #121c38);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 500px;
+            border: 1px solid #31416e;
+            border-radius: 20px;
+            padding: 30px;
+            background-color: rgba(18, 28, 56, 0.8);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .player-controls button {
+            background-color: transparent;
+            border: none;
+            font-size: 2rem;
+            color: white;
+            transition: transform 0.2s;
+        }
+
+        .player-controls button:hover {
+            transform: scale(1.2);
+            color: #e58b65;
+        }
+
+        .progress-container {
+            width: 100%;
+            margin: 20px auto;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #2f3e60;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .progress {
+            height: 100%;
+            width: 0%;
+            background-color: #e58b65;
+            transition: width 0.3s;
+        }
+
+        .volume-slider {
+            width: 150px;
+            margin-top: 10px;
+        }
+
+        .playlist {
+            margin-top: 20px;
+            text-align: left;
+            transition: max-height 0.4s ease-in-out;
+            overflow: hidden;
+            max-height: 500px;
+        }
+
+        .playlist.collapsed {
+            max-height: 0;
+        }
+
+        .playlist-item {
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .playlist-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .active-track {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .metadata {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .track-actions {
+            margin-top: 10px;
+        }
+
+        .track-actions button {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin: 0 5px;
+            color: white;
+            transition: background 0.2s;
+        }
+
+        .track-actions button:hover {
+            background: #e58b65;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container text-center mt-5">
+        <h2 id="track-title">When We Were Kids</h2>
+        <p id="artist-name">Bangers Only</p>
+        <div class="metadata" id="track-meta">Duration: 3:45 | Year: 2023</div>
+
+        <div class="player-controls d-flex justify-content-center align-items-center gap-4 my-4">
+            <button onclick="previousTrack()"><i class="bi bi-skip-backward-fill"></i></button>
+            <button onclick="togglePlay()" id="play-btn"><i class="bi bi-play-fill"></i></button>
+            <button onclick="nextTrack()"><i class="bi bi-skip-forward-fill"></i></button>
+            <button onclick="toggleRepeat()" id="repeat-btn"><i class="bi bi-arrow-repeat"></i></button>
+            <button onclick="toggleShuffle()" id="shuffle-btn"><i class="bi bi-shuffle"></i></button>
+        </div>
+
+        <audio id="audio" src="" ontimeupdate="updateProgress()" onended="handleTrackEnd()"></audio>
+
+        <div class="progress-container">
+            <span id="current-time">0:00</span>
+            <div class="progress-bar" onclick="seek(event)">
+                <div class="progress" id="progress"></div>
+            </div>
+            <span id="duration">0:00</span>
+        </div>
+
+        <div class="mt-3">
+            <label for="volume" class="form-label">Volume</label>
+            <input type="range" id="volume" class="form-range volume-slider" min="0" max="1" step="0.01" onchange="setVolume(this.value)">
+        </div>
+
+        <button class="btn btn-outline-light btn-sm mt-3" onclick="togglePlaylist()">Toggle Playlist</button>
+
+        <div class="playlist" id="playlist-container-wrapper">
+            <h5>Playlist</h5>
+            <div id="playlist-container"></div>
+        </div>
+    </div>
+
+    <script>
+        const audio = document.getElementById("audio");
+        const progress = document.getElementById("progress");
+        const progressBar = document.querySelector(".progress-bar");
+        const currentTimeText = document.getElementById("current-time");
+        const durationText = document.getElementById("duration");
+        const playlistContainer = document.getElementById("playlist-container");
+        const trackMeta = document.getElementById("track-meta");
+
+        const tracks = [
+            { title: "When We Were Kids", artist: "Bangers Only", src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", duration: "3:45", year: "2023" },
+            { title: "Love Is Gone - Acoustic", artist: "SLANDER", src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", duration: "4:12", year: "2021" },
+            { title: "To Begin Again", artist: "Norah Jones", src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", duration: "3:58", year: "2022" },
+        ];
+
+        let currentTrack = 0;
+        let isShuffle = false;
+        let isRepeat = false;
+
+        function loadTrack(index) {
+            currentTrack = index;
+            const track = tracks[index];
+            audio.src = track.src;
+            document.getElementById("track-title").textContent = track.title;
+            document.getElementById("artist-name").textContent = track.artist;
+            trackMeta.textContent = `Duration: ${track.duration} | Year: ${track.year}`;
+            updatePlaylistUI();
+            audio.load();
+            audio.play();
+            document.getElementById("play-btn").innerHTML = '<i class="bi bi-pause-fill"></i>';
+        }
+
+        function togglePlay() {
+            if (audio.paused) {
+                audio.play();
+                document.getElementById("play-btn").innerHTML = '<i class="bi bi-pause-fill"></i>';
+            } else {
+                audio.pause();
+                document.getElementById("play-btn").innerHTML = '<i class="bi bi-play-fill"></i>';
+            }
+        }
+
+        function nextTrack() {
+            if (isShuffle) {
+                currentTrack = Math.floor(Math.random() * tracks.length);
+            } else {
+                currentTrack = (currentTrack + 1) % tracks.length;
+            }
+            loadTrack(currentTrack);
+        }
+
+        function previousTrack() {
+            currentTrack = (currentTrack - 1 + tracks.length) % tracks.length;
+            loadTrack(currentTrack);
+        }
+
+        function handleTrackEnd() {
+            if (isRepeat) {
+                loadTrack(currentTrack);
+            } else {
+                nextTrack();
+            }
+        }
+
+        function toggleRepeat() {
+            isRepeat = !isRepeat;
+            document.getElementById("repeat-btn").style.color = isRepeat ? "#e58b65" : "white";
+        }
+
+        function toggleShuffle() {
+            isShuffle = !isShuffle;
+            document.getElementById("shuffle-btn").style.color = isShuffle ? "#e58b65" : "white";
+        }
+
+        function updateProgress() {
+            if (audio.duration) {
+                const progressPercent = (audio.currentTime / audio.duration) * 100;
+                progress.style.width = progressPercent + "%";
+                currentTimeText.textContent = formatTime(audio.currentTime);
+                durationText.textContent = formatTime(audio.duration);
+            }
+        }
+
+        function seek(event) {
+            const rect = progressBar.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const totalWidth = rect.width;
+            const percent = offsetX / totalWidth;
+            audio.currentTime = percent * audio.duration;
+        }
+
+        function formatTime(time) {
+            const minutes = Math.floor(time / 60);
+            const seconds = Math.floor(time % 60);
+            return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+        }
+
+        function setVolume(value) {
+            audio.volume = value;
+        }
+
+        function updatePlaylistUI() {
+            playlistContainer.innerHTML = "";
+            tracks.forEach((track, index) => {
+                const item = document.createElement("div");
+                item.className = "playlist-item" + (index === currentTrack ? " active-track" : "");
+                item.innerHTML = `<strong>${track.title}</strong><br/><span class='text-muted'>${track.artist}</span>`;
+                item.onclick = () => loadTrack(index);
+                playlistContainer.appendChild(item);
+            });
+        }
+
+        function togglePlaylist() {
+            const wrapper = document.getElementById("playlist-container-wrapper");
+            wrapper.classList.toggle("collapsed");
+        }
+
+        window.onload = () => {
+            loadTrack(currentTrack);
+            updatePlaylistUI();
+        };
+    </script>
+</body>
+
+</html>
+
+
+
+
+
